@@ -53,10 +53,10 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Profile picture and cover picture are required");
   }
 
-  const profle = await profileUpload(profilePicturePath, userName);
+  const profile = await profileUpload(profilePicturePath, userName);
   const cover = await coverUpload(coverPicturePath, userName);
 
-  if (!profle) {
+  if (!profile) {
     throw new ApiError(500, "Error uploading images");
   }
 
@@ -65,7 +65,7 @@ const registerUser = asyncHandler(async (req, res) => {
     email,
     password,
     userName: userName.toLowerCase(),
-    profilePicture: profle?.url,
+    profilePicture: profile?.url,
     coverPicture: cover?.url || null,
   });
 
@@ -170,12 +170,13 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     );
 });
 
-const changePassword = asyncHandler(async (res, req) => {
+const changePassword = asyncHandler(async (req, res) => {
+  console.log(req.body);
   const { oldPassword, newPassword } = req.body;
   const user = await User.findById(req.user?.id);
   const isPasswordCorrect = await user.isPasswordMatch(oldPassword);
   if (!isPasswordCorrect) throw new ApiError(401, "Password is not correct");
-  user.Password = newPassword;
+  user.password = newPassword;
   await user.save({ validateBeforeSave: false });
   return res
     .status(200)
@@ -192,6 +193,56 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
   const { fullName, userName, email } = req.body;
   if (!fullName || !userName || !email)
     throw new ApiError(400, "All fields are required");
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        fullName,
+        email,
+        userName,
+      },
+    },
+    { new: true }
+  ).select("-password");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Account details updated successfully"));
+});
+
+const updateUserProfileImage = asyncHandler(async (req, res) => {
+  const userName = req.user?.userName;
+  const profilePath = req.file?.path;
+  if (!profilePath) throw new ApiError(400, "Profile Picture is Important");
+  const profile = await profileUpload(profilePath, userName);
+  if (!profile.url) throw new ApiError(400, "Error Occured");
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: { profilePicture: profile.url },
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Avatar image updated successfully"));
+});
+
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+  const userName = req.user?.userName;
+  const coverPath = req.file?.path;
+  if (!coverPath) throw new ApiError(400, "cover Picture is Important");
+  const cover = await coverUpload(coverPath, userName);
+  if (!cover.url) throw new ApiError(400, "Error Occured");
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: { coverPicture: cover?.url },
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Avatar image updated successfully"));
 });
 
 export {
@@ -201,4 +252,7 @@ export {
   refreshAccessToken,
   changePassword,
   getCurrentUser,
+  updateAccountDetails,
+  updateUserProfileImage,
+  updateUserCoverImage,
 };
