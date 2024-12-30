@@ -1,9 +1,15 @@
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
-import { coverUpload, profileUpload } from "../utils/cloudinary.js";
+import {
+  coverUpload,
+  deletePreviousCoverPicture,
+  deletePreviousProfilePicture,
+  profileUpload,
+} from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessTokenandRefreshToken = async (userId) => {
   try {
@@ -77,8 +83,18 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Error creating user");
   }
 
+  const { accessToken, refreshToken } =
+    await generateAccessTokenandRefreshToken(newUser._id);
+
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
   return res
     .status(201)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
     .json(new ApiResponse(201, "User registered successfully", createdUser));
 });
 
@@ -215,16 +231,32 @@ const updateUserProfileImage = asyncHandler(async (req, res) => {
   if (!profilePath) throw new ApiError(400, "Profile Picture is Important");
   const profile = await profileUpload(profilePath, userName);
   if (!profile.url) throw new ApiError(400, "Error Occured");
-  const user = await User.findByIdAndUpdate(
+  const user = await User.findById(req.user?._id);
+  const cuurentProfile = user?.profilePicture;
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: { profilePicture: "" },
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+  const updateUserProfile = await User.findByIdAndUpdate(
     req.user._id,
     {
       $set: { profilePicture: profile.url },
     },
     { new: true }
   ).select("-password -refreshToken");
+  deletePreviousProfilePicture(cuurentProfile, userName);
   return res
     .status(200)
-    .json(new ApiResponse(200, user, "Avatar image updated successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        updateUserProfile,
+        "Avatar image updated successfully"
+      )
+    );
 });
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
@@ -233,16 +265,165 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
   if (!coverPath) throw new ApiError(400, "cover Picture is Important");
   const cover = await coverUpload(coverPath, userName);
   if (!cover.url) throw new ApiError(400, "Error Occured");
-  const user = await User.findByIdAndUpdate(
+  const user = await User.findById(req.user?._id);
+  const cuurentCover = user?.coverPicture;
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: { coverPicture: "" },
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  const updateUserCover = await User.findByIdAndUpdate(
     req.user._id,
     {
       $set: { coverPicture: cover?.url },
     },
     { new: true }
   ).select("-password -refreshToken");
+  deletePreviousCoverPicture(cuurentCover, userName);
   return res
     .status(200)
-    .json(new ApiResponse(200, user, "Avatar image updated successfully"));
+    .json(
+      new ApiResponse(200, updateUserCover, "Avatar image updated successfully")
+    );
+});
+
+const deleteProfilePicture = asyncHandler(async (req, res) => {
+  const { userName, profilePicture, _id } = req.user;
+  if (!profilePicture)
+    throw new ApiError(400, "Profile Picture is not available");
+  deletePreviousProfilePicture(profilePicture, userName);
+  await User.findByIdAndUpdate(
+    _id,
+    {
+      $set: { profilePicture: "" },
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, userName, "Image deleted successfully"));
+});
+
+const deleteCoverPicture = asyncHandler(async (req, res) => {
+  const { userName, coverPicture, _id } = req.user;
+  if (!coverPicture) throw new ApiError(400, "cover Picture is not available");
+  deletePreviousCoverPicture(coverPicture, userName);
+  await User.findByIdAndUpdate(
+    _id,
+    {
+      $set: { coverPicture: "" },
+    },
+    { new: true }
+  ).select("-password -refreshToken");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, userName, "Image deleted successfully"));
+});
+
+const getUserChannel = asyncHandler(async (req, res) => {
+  const { userName } = req.params;
+
+  if (!userName?.trim()) throw new ApiError(400, "Username not found");
+  const channel = await User.aggregate([
+    {
+      $match: {
+        userName: userName?.toLowerCase(),
+      },
+    },
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "channel",
+        as: "subscribers",
+      },
+    },
+    {
+      $lookup: {
+        from: "subscriptions",
+        localField: "_id",
+        foreignField: "subscriber",
+        as: "subscribedChannels",
+      },
+    },
+    {
+      $addFields: {
+        subscribersCount: { $size: "$subscribers" },
+        subcribedToCount: { $size: "$subscribedChannels" },
+        isSubscribed: {
+          $cond: {
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+            then: true,
+            else: false,
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        fullName: 1,
+        userName: 1,
+        email: 1,
+        profilePicture: 1,
+        coverPicture: 1,
+        createdAt: 1,
+        subscribersCount: 1,
+        subcribedToCount: 1,
+        isSubscribed: 1,
+      },
+    },
+  ]);
+  if (!channel?.length) throw new ApiError(404, "Channel does not exist");
+  return res.status(200).json(new ApiResponse(200, channel[0], "Fetched"));
+});
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(`${req.user._id}`),
+      },
+    },
+    {
+      $lookup: {
+        from: "videos",
+        localField: "watchHistory",
+        foreignField: "_id",
+        as: "watchHistory",
+        pipeline: [
+          {
+            $lookup: {
+              from: "users",
+              localField: "owner",
+              foreignField: "_id",
+              as: "owner",
+              pipeline: [
+                {
+                  $project: {
+                    fullName: 1,
+                    userName: 1,
+                    profilePicture: 1,
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ]);
+  if (!user[0].watchHistory.length) {
+    console.log("no");
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "No watch history found"));
+  }
+
+  console.log(user);
+  return res.status(200).json(new ApiResponse(200, {}, "Success"));
 });
 
 export {
@@ -255,4 +436,8 @@ export {
   updateAccountDetails,
   updateUserProfileImage,
   updateUserCoverImage,
+  deleteProfilePicture,
+  deleteCoverPicture,
+  getUserChannel,
+  getWatchHistory,
 };

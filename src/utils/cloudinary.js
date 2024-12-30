@@ -12,7 +12,7 @@ cloudinary.config({
 const profileUpload = async (file, userName) => {
   if (!file) return null;
   try {
-    const publicId = `profiles/${userName}/${Date.now()}`;
+    const publicId = `${userName}/${Date.now()}`;
     const res = await cloudinary.uploader.upload(file, {
       folder: "profiles",
       resource_type: "auto",
@@ -29,7 +29,7 @@ const profileUpload = async (file, userName) => {
 const coverUpload = async (file, userName) => {
   if (!file) return null;
   try {
-    const publicId = `covers/${userName}/${Date.now()}`;
+    const publicId = `${userName}/${Date.now()}`;
     const res = await cloudinary.uploader.upload(file, {
       folder: "covers",
       resource_type: "auto",
@@ -44,4 +44,34 @@ const coverUpload = async (file, userName) => {
   }
 };
 
-export { profileUpload, coverUpload };
+const deletePreviousProfilePicture = async (cuurentProfile, userName) => {
+  const publicID = cuurentProfile.split("/").pop().split(".")[0];
+  if (!publicID) return null;
+  try {
+    const res = await cloudinary.uploader.destroy(
+      `profiles/${userName}/${publicID}`
+    );
+    return res;
+  } catch (error) {
+    console.error("Error Occured", error);
+  }
+};
+const deletePreviousCoverPicture = async (cuurentCover, userName) => {
+  const publicID = cuurentCover.split("/").pop().split(".")[0];
+  if (!publicID) return null;
+  try {
+    const res = await cloudinary.uploader.destroy(
+      `covers/${userName}/${publicID}`
+    );
+    return res;
+  } catch (error) {
+    console.error("Error Occured", error);
+  }
+};
+
+export {
+  coverUpload,
+  profileUpload,
+  deletePreviousProfilePicture,
+  deletePreviousCoverPicture,
+};
