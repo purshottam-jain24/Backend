@@ -11,6 +11,7 @@ import { deleteProfilePicture } from "./user/deleteProfilePicture.js";
 import { deleteCoverPicture } from "./user/deleteCoverPicture.js";
 import { getUserChannel } from "./user/getUserChannel.js";
 import { getWatchHistory } from "./user/getWatchHistory.js";
+import { deleteLoginUser } from "./user/deleteUser.js";
 
 export {
   registerUser,
@@ -26,4 +27,5 @@ export {
   deleteCoverPicture,
   getUserChannel,
   getWatchHistory,
+  deleteLoginUser,
 };

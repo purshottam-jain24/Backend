@@ -69,9 +69,20 @@ const deletePreviousCoverPicture = async (cuurentCover, userName) => {
   }
 };
 
+const deleteAll = async function deleteAllResources() {
+  try {
+    const result = await cloudinary.api.delete_all_resources();
+    console.log("All resources deleted:", result);
+  } catch (error) {
+    console.error("Error deleting resources:", error);
+  }
+};
+
+
 export {
   coverUpload,
   profileUpload,
   deletePreviousProfilePicture,
   deletePreviousCoverPicture,
+  deleteAll,
 };

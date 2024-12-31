@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   changePassword,
+  deleteLoginUser,
   deleteCoverPicture,
   deleteProfilePicture,
   getCurrentUser,
@@ -42,5 +43,6 @@ router.route("/deleteProfilePicture").delete(verifyJWT, deleteProfilePicture);
 router.route("/deleteCoverPicture").delete(verifyJWT, deleteCoverPicture);
 router.route("/c/:userName").get(verifyJWT, getUserChannel);
 router.route("/getWatchHistory").get(verifyJWT, getWatchHistory);
+router.route("/deleteLoginUser").delete(verifyJWT, deleteLoginUser);
 
 export default router;
